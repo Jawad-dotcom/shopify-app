@@ -1,6 +1,17 @@
 {
+    "version": 2,
     "buildCommand": "cd frontend && npm install && npm run build",
     "outputDirectory": "frontend/dist",
     "installCommand": "npm install",
-    "framework": "vite"
+    "framework": "vite",
+    "routes": [
+      {
+        "src": "/api/(.*)",
+        "dest": "https://your-backend-url.onrender.com/api/$1"
+      },
+      {
+        "src": "/(.*)",
+        "dest": "/$1"
+      }
+    ]
   }

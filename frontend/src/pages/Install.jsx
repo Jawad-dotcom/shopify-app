@@ -6,54 +6,35 @@ export default function Install() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
-
   const handleInstall = async () => {
     if (!shop.trim()) {
       setError('Shop name daalo!')
       return
     }
-
+  
     setLoading(true)
     setError('')
-
+  
     const shopDomain = shop.includes('.myshopify.com')
       ? shop
       : `${shop}.myshopify.com`
-
+  
+    const backendUrl = import.meta.env.VITE_BACKEND_URL
+    
+    if (!backendUrl) {
+      setError('Backend URL not configured! Please set VITE_BACKEND_URL')
+      setLoading(false)
+      return
+    }
+  
     try {
       const response = await fetch(
-        `${import.meta.env.VITE_BACKEND_URL}/api/auth?shop=${shopDomain}`,
-        { 
-          method: 'GET',
-          redirect: 'manual'
-        }
+        `${backendUrl}/api/auth?shop=${shopDomain}`,
+        { method: 'GET', redirect: 'manual' }
       )
-      
-      if (response.status === 302 || response.status === 301) {
-        const redirectUrl = response.headers.get('Location')
-        if (redirectUrl) {
-          // External redirect for Shopify OAuth
-          window.location.href = redirectUrl
-        } else {
-          setError('Redirect URL nahi mila!')
-          setLoading(false)
-        }
-      } else if (response.ok) {
-        const data = await response.json()
-        if (data.redirectTo) {
-          navigate(data.redirectTo)
-        } else {
-          // Assume success, go to products
-          navigate(`/products?shop=${shopDomain}`)
-        }
-      } else {
-        const data = await response.json()
-        setError(data.error || 'Kuch gadbad hui!')
-        setLoading(false)
-      }
+      // ... rest of the code
     } catch (err) {
-      console.error('Connection error:', err)
-      setError('Connection error! Please check if backend is running.')
+      setError(`Backend not reachable. Make sure backend is deployed at: ${backendUrl}`)
       setLoading(false)
     }
   }
