@@ -1,36 +1,72 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 
 export default function Install() {
   const [shop, setShop] = useState('')
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+  const navigate = useNavigate()
 
-  const handleInstall = () => {
+  const handleInstall = async () => {
     if (!shop.trim()) {
       setError('Shop name daalo!')
       return
     }
 
-    // Backend ke auth route pe bhejo
+    setLoading(true)
+    setError('')
+
     const shopDomain = shop.includes('.myshopify.com')
       ? shop
       : `${shop}.myshopify.com`
 
-    window.location.href =
-      `${import.meta.env.VITE_BACKEND_URL}/api/auth?shop=${shopDomain}`
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_BACKEND_URL}/api/auth?shop=${shopDomain}`,
+        { 
+          method: 'GET',
+          redirect: 'manual'
+        }
+      )
+      
+      if (response.status === 302 || response.status === 301) {
+        const redirectUrl = response.headers.get('Location')
+        if (redirectUrl) {
+          // External redirect for Shopify OAuth
+          window.location.href = redirectUrl
+        } else {
+          setError('Redirect URL nahi mila!')
+          setLoading(false)
+        }
+      } else if (response.ok) {
+        const data = await response.json()
+        if (data.redirectTo) {
+          navigate(data.redirectTo)
+        } else {
+          // Assume success, go to products
+          navigate(`/products?shop=${shopDomain}`)
+        }
+      } else {
+        const data = await response.json()
+        setError(data.error || 'Kuch gadbad hui!')
+        setLoading(false)
+      }
+    } catch (err) {
+      console.error('Connection error:', err)
+      setError('Connection error! Please check if backend is running.')
+      setLoading(false)
+    }
   }
 
   return (
     <div style={styles.container}>
       <div style={styles.card}>
-
-        {/* Logo */}
         <div style={styles.logo}>🛍️</div>
         <h1 style={styles.title}>Product Viewer</h1>
         <p style={styles.subtitle}>
           Apna Shopify store connect karo
         </p>
 
-        {/* Input */}
         <div style={styles.inputGroup}>
           <div style={styles.inputWrapper}>
             <input
@@ -41,17 +77,25 @@ export default function Install() {
                 setShop(e.target.value)
                 setError('')
               }}
-              onKeyDown={e => e.key === 'Enter' && handleInstall()}
+              onKeyDown={e => e.key === 'Enter' && !loading && handleInstall()}
               style={styles.input}
+              disabled={loading}
             />
             <span style={styles.suffix}>.myshopify.com</span>
           </div>
           {error && <p style={styles.error}>{error}</p>}
         </div>
 
-        {/* Button */}
-        <button onClick={handleInstall} style={styles.button}>
-          Connect Store →
+        <button 
+          onClick={handleInstall} 
+          style={{
+            ...styles.button,
+            opacity: loading ? 0.7 : 1,
+            cursor: loading ? 'not-allowed' : 'pointer'
+          }}
+          disabled={loading}
+        >
+          {loading ? 'Connecting...' : 'Connect Store →'}
         </button>
 
         <p style={styles.hint}>
@@ -137,8 +181,8 @@ const styles = {
     borderRadius: '8px',
     fontSize: '16px',
     fontWeight: '600',
-    cursor: 'pointer',
     marginBottom: '20px',
+    transition: 'transform 0.2s',
   },
   hint: {
     fontSize: '13px',

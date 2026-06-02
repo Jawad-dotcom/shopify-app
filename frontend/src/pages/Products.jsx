@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import axios from 'axios'
 
 export default function Products() {
@@ -7,35 +7,62 @@ export default function Products() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
   const shop = searchParams.get('shop')
 
   useEffect(() => {
-    if (!shop) {
-      setError('Shop parameter missing!')
-      setLoading(false)
-      return
+    let isMounted = true
+
+    const fetchProducts = async () => {
+      if (!shop) {
+        if (isMounted) {
+          setError('Shop parameter missing!')
+          setLoading(false)
+        }
+        return
+      }
+
+      try {
+        const response = await axios.get(
+          `${import.meta.env.VITE_BACKEND_URL}/api/products?shop=${shop}`,
+          { 
+            withCredentials: true,
+            timeout: 10000 
+          }
+        )
+        
+        if (isMounted) {
+          setProducts(response.data.products || [])
+          setLoading(false)
+        }
+      } catch (err) {
+        if (isMounted) {
+          if (err.response?.status === 401) {
+            // Unauthorized, go back to install
+            navigate('/')
+          } else if (err.response?.status === 404) {
+            setError('Backend API nahi mila! Check karo backend running hai?')
+          } else {
+            setError(err.response?.data?.error || 'Products load nahi hue!')
+          }
+          setLoading(false)
+        }
+      }
     }
 
-    axios
-      .get(`${import.meta.env.VITE_BACKEND_URL}/api/products?shop=${shop}`, {
-        withCredentials: true,
-      })
-      .then(res => {
-        setProducts(res.data.products)
-        setLoading(false)
-      })
-      .catch(err => {
-        setError(err.response?.data?.error || 'Products load nahi hue!')
-        setLoading(false)
-      })
-  }, [shop])
+    fetchProducts()
+
+    return () => {
+      isMounted = false
+    }
+  }, [shop, navigate])
 
   // Loading State
   if (loading) {
     return (
       <div style={styles.center}>
         <div style={styles.spinner}>⏳</div>
-        <p>Products load ho rahe hain...</p>
+        <p style={{ fontSize: '18px', color: '#666' }}>Products load ho rahe hain...</p>
       </div>
     )
   }
@@ -44,17 +71,18 @@ export default function Products() {
   if (error) {
     return (
       <div style={styles.center}>
-        <p style={{ fontSize: '48px' }}>❌</p>
-        <h2>Kuch Gadbad Hui!</h2>
-        <p style={{ color: '#666' }}>{error}</p>
-        <a href="/" style={styles.backBtn}>← Wapas Jao</a>
+        <div style={{ fontSize: '48px', marginBottom: '16px' }}>❌</div>
+        <h2 style={{ marginBottom: '8px', color: '#1a1a2e' }}>Kuch Gadbad Hui!</h2>
+        <p style={{ color: '#666', marginBottom: '20px' }}>{error}</p>
+        <button onClick={() => navigate('/')} style={styles.backBtn}>
+          ← Wapas Jao
+        </button>
       </div>
     )
   }
 
   return (
     <div style={styles.page}>
-
       {/* Header */}
       <div style={styles.header}>
         <div>
@@ -66,9 +94,9 @@ export default function Products() {
 
       {/* Empty State */}
       {products.length === 0 && (
-        <div style={styles.center}>
-          <p style={{ fontSize: '48px' }}>📦</p>
-          <h2>Koi Product Nahi Mila</h2>
+        <div style={styles.centerInline}>
+          <div style={{ fontSize: '48px', marginBottom: '16px' }}>📦</div>
+          <h2 style={{ marginBottom: '8px', color: '#1a1a2e' }}>Koi Product Nahi Mila</h2>
           <p style={{ color: '#666' }}>
             Shopify store mein products add karo pehle
           </p>
@@ -79,7 +107,6 @@ export default function Products() {
       <div style={styles.grid}>
         {products.map(product => (
           <div key={product.id} style={styles.card}>
-
             {/* Product Image */}
             <div style={styles.imageContainer}>
               {product.image ? (
@@ -87,27 +114,36 @@ export default function Products() {
                   src={product.image}
                   alt={product.title}
                   style={styles.image}
+                  onError={(e) => {
+                    e.target.style.display = 'none'
+                    e.target.parentElement.querySelector('.no-image-fallback').style.display = 'flex'
+                  }}
                 />
-              ) : (
-                <div style={styles.noImage}>📷</div>
-              )}
+              ) : null}
+              <div className="no-image-fallback" style={{
+                ...styles.noImage,
+                display: product.image ? 'none' : 'flex'
+              }}>
+                📷
+              </div>
 
               {/* Status Badge */}
               <span style={{
                 ...styles.statusBadge,
                 background: product.status === 'active' ? '#48bb78' : '#a0aec0'
               }}>
-                {product.status}
+                {product.status || 'active'}
               </span>
             </div>
 
             {/* Product Info */}
             <div style={styles.info}>
               <h3 style={styles.productTitle}>{product.title}</h3>
-              <p style={styles.vendor}>{product.vendor}</p>
-              <p style={styles.price}>Rs. {product.price}</p>
+              <p style={styles.vendor}>{product.vendor || 'Shopify Store'}</p>
+              <p style={styles.price}>
+                Rs. {typeof product.price === 'number' ? product.price.toFixed(2) : product.price}
+              </p>
             </div>
-
           </div>
         ))}
       </div>
@@ -131,6 +167,8 @@ const styles = {
     padding: '24px 32px',
     borderRadius: '12px',
     boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+    flexWrap: 'wrap',
+    gap: '16px',
   },
   title: {
     fontSize: '24px',
@@ -154,7 +192,7 @@ const styles = {
   },
   grid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
     gap: '24px',
   },
   card: {
@@ -164,6 +202,10 @@ const styles = {
     boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
     transition: 'transform 0.2s, box-shadow 0.2s',
     cursor: 'pointer',
+    ':hover': {
+      transform: 'translateY(-4px)',
+      boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+    }
   },
   imageContainer: {
     position: 'relative',
@@ -199,7 +241,7 @@ const styles = {
     padding: '16px 20px',
   },
   productTitle: {
-    fontSize: '15px',
+    fontSize: '16px',
     fontWeight: '600',
     color: '#1a1a2e',
     margin: '0 0 4px',
@@ -226,18 +268,40 @@ const styles = {
     justifyContent: 'center',
     fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif',
     textAlign: 'center',
+    padding: '20px',
+  },
+  centerInline: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    textAlign: 'center',
+    padding: '60px 20px',
   },
   spinner: {
     fontSize: '48px',
     marginBottom: '16px',
+    animation: 'spin 1s linear infinite',
   },
   backBtn: {
-    marginTop: '16px',
     padding: '10px 24px',
     background: '#667eea',
     color: 'white',
+    border: 'none',
     borderRadius: '8px',
-    textDecoration: 'none',
+    fontSize: '14px',
     fontWeight: '600',
+    cursor: 'pointer',
+    textDecoration: 'none',
   }
 }
+
+// Add animation CSS
+const styleSheet = document.createElement("style")
+styleSheet.textContent = `
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+`
+document.head.appendChild(styleSheet)
